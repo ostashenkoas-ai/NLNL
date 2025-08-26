@@ -1,0 +1,14 @@
+{
+  "name": "Beauty Telegram App (RU/NL)",
+  "description": "Telegram bot + AdminJS panel. Prisma + Postgres. Web + Worker dynos. RU/NL locale.",
+  "env": {
+    "TELEGRAM_BOT_TOKEN": { "description": "BotFather token", "required": true },
+    "ADMIN_EMAIL": { "value": "admin@example.com" },
+    "ADMIN_PASSWORD": { "value": "admin123" },
+    "SESSION_SECRET": { "generator": "secret" },
+    "CURRENCY": { "value": "EUR" },
+    "DATABASE_URL": { "required": true, "description": "Filled by Heroku Postgres" }
+  },
+  "addons": ["heroku-postgresql"],
+  "scripts": { "postdeploy": "npm run db:push:pg && npm run seed" }
+}

@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+model User {
+  id            Int             @id @default(autoincrement())
+  telegramId    String          @unique
+  role          Role
+  username      String?
+  firstName     String?
+  lastName      String?
+  phone         String?
+  city          String?
+  languages     String?
+  uiLocale      String          @default("ru")
+  isBanned      Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  services      MasterService[]
+  leads         Lead[]          @relation("MasterLeads")
+  subscriptions Subscription[]
+}
+model Service {
+  id        Int              @id @default(autoincrement())
+  name      String           @unique
+  masters   MasterService[]
+  createdAt DateTime         @default(now())
+}
+model MasterService {
+  id          Int      @id @default(autoincrement())
+  masterId    Int
+  serviceId   Int
+  priceFrom   Int?
+  priceTo     Int?
+  description String?
+  photos      String?
+  master  User    @relation(fields: [masterId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+  @@unique([masterId, serviceId])
+}
+model Lead {
+  id               Int        @id @default(autoincrement())
+  status           LeadStatus @default(NEW)
+  clientTelegramId String
+  clientUsername   String?
+  clientName       String?
+  clientPhone      String?
+  city             String?
+  budget           Int?
+  note             String?
+  masterId         Int
+  serviceId        Int
+  createdAt        DateTime   @default(now())
+  master  User    @relation(name: "MasterLeads", fields: [masterId], references: [id])
+  service Service @relation(fields: [serviceId], references: [id])
+}
+model Subscription {
+  id         Int      @id @default(autoincrement())
+  masterId   Int
+  plan       String
+  status     String
+  periodEnd  DateTime
+  createdAt  DateTime @default(now())
+  master     User     @relation(fields: [masterId], references: [id])
+  @@index([masterId])
+}
+enum Role {
+  CLIENT
+  MASTER
+  ADMIN
+}
+enum LeadStatus {
+  NEW
+  SENT
+  CONTACTED
+  WON
+  LOST
+}
