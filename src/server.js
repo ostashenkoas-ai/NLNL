@@ -32,7 +32,16 @@ async function buildServer() {
       }},
       { resource: { model: prisma.service, client: prisma } },
       { resource: { model: prisma.masterService, client: prisma }, options: {
-        properties: { photos: { type: 'string' }, description: { type: 'textarea' } }
+        listProperties: ['id','masterId','serviceId','rating','topUntil'],
+        editProperties: ['masterId','serviceId','priceFrom','priceTo','description','photos','rating','topUntil','topNote'],
+        showProperties: ['id','masterId','serviceId','priceFrom','priceTo','description','photos','rating','topUntil','topNote'],
+        properties: {
+          photos: { type: 'string', props: { placeholder: 'https://...jpg, https://...png' } },
+          description: { type: 'textarea' },
+          rating: { type: 'number', props: { min: 1, max: 5, step: 1 } },
+          topUntil: { type: 'datetime' },
+          topNote: { type: 'string' }
+        }
       }},
       { resource: { model: prisma.lead, client: prisma }, options: {
         listProperties: ['id','createdAt','status','city','budget','masterId','serviceId','clientPhone','clientUsername']

@@ -15,11 +15,10 @@ const TEXTS = {
     langsAsk: 'На каких языках работаете? (через запятую, или /skip)',
     regDone: '✅ Регистрация мастера завершена. Используйте /mystats для статистики.',
     sharePhone: 'Поделитесь номером телефона:',
-    listFound: (n)=>`Найдено мастеров: ${n} (показываю до 10)`,
+    listFound: (n)=>`Найдено мастеров: ${n} (показываю по 5 на страницу)`,
     noneFound: 'Мастера не найдены. Попробуйте другой город или услугу.',
     notEnough: 'Недостаточно данных. Введите /find.',
     cmds: 'Команды: /register — регистрация мастера, /find — поиск мастера',
-    newLeadForMasterLimited: (s)=>`📩 Новый лид (${s})\nℹ️ Оформите подписку или оплатите лид, чтобы получить контакт клиента.`,
     newLeadForMasterFull: (s, city, budget, clientName, clientUsername, clientPhone) =>
       `📩 Новый лид: ${s}\n📍 Город: ${city||'—'}\n💶 Бюджет: ${budget?budget+'€':'—'}\n👤 Клиент: ${clientName}${clientUsername?' (@'+clientUsername+')':''}\n📞 Телефон: ${clientPhone||'—'}`
   },
@@ -36,37 +35,43 @@ const TEXTS = {
     langsAsk: 'Welke talen? (komma-gescheiden, of /skip)',
     regDone: '✅ Registratie voltooid. Gebruik /mystats voor statistiek.',
     sharePhone: 'Deel uw telefoonnummer:',
-    listFound: (n)=>`Gevonden masters: ${n} (max 10 getoond)`,
+    listFound: (n)=>`Gevonden masters: ${n} (5 per pagina)`,
     noneFound: 'Geen masters gevonden. Probeer een andere stad of dienst.',
     notEnough: 'Onvoldoende data. Gebruik /find.',
     cmds: 'Commando’s: /register — registratie, /find — zoeken',
-    newLeadForMasterLimited: (s)=>`📩 Nieuwe lead (${s})\nℹ️ Neem een abonnement of betaal de lead om contactgegevens te ontvangen.`,
     newLeadForMasterFull: (s, city, budget, clientName, clientUsername, clientPhone) =>
       `📩 Nieuwe lead: ${s}\n📍 Stad: ${city||'—'}\n💶 Budget: ${budget?budget+'€':'—'}\n👤 Klant: ${clientName}${clientUsername?' (@'+clientUsername+')':''}\n📞 Telefoon: ${clientPhone||'—'}`
   }
 };
-function t(loc, key, ...args) {
-  const dict = TEXTS[loc] || TEXTS.ru;
-  const val = dict[key]; return typeof val === 'function' ? val(...args) : val;
-}
-async function getLocale(ctx) {
-  const u = await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } });
-  return (u?.uiLocale) || 'ru';
-}
+
+function t(loc, key, ...args) { const dict = TEXTS[loc] || TEXTS.ru; const val = dict[key]; return typeof val === 'function' ? val(...args) : val; }
+async function getLocale(ctx) { const u = await prisma.user.findUnique({ where: { telegramId: String(ctx.from.id) } }); return (u?.uiLocale) || 'ru'; }
 function fmtUser(u){ const name=[u.firstName,u.lastName].filter(Boolean).join(' ')||'Без имени'; return `${name}${u.username?' (@'+u.username+')':''}`; }
+
+function stars(r) {
+  if (!r || r < 1) return '—';
+  const n = Math.max(1, Math.min(5, r|0));
+  return '⭐'.repeat(n) + (n < 5 ? '☆'.repeat(5 - n) : '');
+}
+function parsePhotos(photosStr) { if (!photosStr) return []; return photosStr.split(',').map(s => s.trim()).filter(Boolean); }
+function short(text, n=120) { return !text ? '—' : (text.length > n ? text.slice(0, n) + '…' : text); }
+
 const state=new Map(); const getState=id=>state.get(id)||{}; const setState=(id,p)=>state.set(id,{...(state.get(id)||{}),...p}); const clearState=id=>state.delete(id);
+
 async function ensureUser(ctx, roleDefault='CLIENT'){
   const tgId=String(ctx.from.id);
   let user=await prisma.user.findUnique({ where:{ telegramId: tgId }});
   if(!user){ user=await prisma.user.create({ data:{ telegramId: tgId, role: roleDefault, username: ctx.from.username||null, firstName: ctx.from.first_name||null, lastName: ctx.from.last_name||null }}); }
   return user;
 }
+
 async function askService(ctx, prompt){
   const services=await prisma.service.findMany({ orderBy:{ name:'asc' }, take:12 });
   if(!services.length){ await ctx.reply('Список услуг пуст. Добавьте услуги в админ-панели.'); return; }
   const rows=services.map(s=>[Markup.button.callback(s.name,`srv_${s.id}`)]);
   await ctx.reply(prompt, Markup.inlineKeyboard(rows));
 }
+
 async function finalizeMaster(ctx){
   const s=(getState(ctx.chat.id).data)||{}; const tgId=String(ctx.from.id);
   const user=await prisma.user.upsert({
@@ -81,13 +86,11 @@ async function finalizeMaster(ctx){
   }
   const L=await getLocale(ctx); await ctx.reply(t(L,'regDone')); clearState(ctx.chat.id);
 }
-async function hasActiveSubscription(masterId){
-  const now=new Date(); const sub=await prisma.subscription.findFirst({ where:{ masterId, status:'ACTIVE', periodEnd:{ gt: now }}, orderBy:{ periodEnd:'desc' }});
-  return !!sub;
-}
+
 function buildBot(token){
   const bot=new Telegraf(token);
 
+  // выбор языка
   bot.start(async (ctx)=>{
     await ensureUser(ctx,'CLIENT');
     await ctx.reply(t('ru','chooseLang'), Markup.inlineKeyboard([[Markup.button.callback(TEXTS.ru.langRu,'lang_ru'), Markup.button.callback(TEXTS.ru.langNl,'lang_nl')]]));
@@ -103,11 +106,13 @@ function buildBot(token){
     await ctx.reply(t('nl','hello'), Markup.inlineKeyboard([[Markup.button.callback(t('nl','iMaster'),'role_master'), Markup.button.callback(t('nl','findMaster'),'find_master')]]));
   });
 
+  // регистрация мастера / поиск
   bot.command('register', async ctx=>{ const L=await getLocale(ctx); setState(ctx.chat.id,{ step:'reg_city', data:{ role:'MASTER' }}); await ctx.reply(t(L,'cityAsk')); });
   bot.command('find', async ctx=>{ const L=await getLocale(ctx); setState(ctx.chat.id,{ step:'find_city', data:{} }); await ctx.reply(t(L,'cityFindAsk')); });
   bot.action('role_master', async ctx=>{ const L=await getLocale(ctx); await ctx.answerCbQuery(); setState(ctx.chat.id,{ step:'reg_city', data:{ role:'MASTER' }}); await ctx.reply(t(L,'cityAsk')); });
   bot.action('find_master', async ctx=>{ const L=await getLocale(ctx); await ctx.answerCbQuery(); setState(ctx.chat.id,{ step:'find_city', data:{} }); await ctx.reply(t(L,'cityFindAsk')); });
 
+  // выбор услуги
   bot.action(/srv_\d+/, async ctx=>{
     const id=Number(ctx.callbackQuery.data.split('_')[1]); const s=getState(ctx.chat.id); const L=await getLocale(ctx);
     if(s.step==='reg_service'){ setState(ctx.chat.id,{ data:{ ...(s.data||{}), serviceId:id }, step:'reg_price_from' }); await ctx.answerCbQuery(); await ctx.reply(t(L,'minPriceAsk')); }
@@ -115,10 +120,12 @@ function buildBot(token){
     else { await ctx.answerCbQuery(); }
   });
 
+  // контакт от клиента -> создаём лид и шлём мастеру (оплаты выключены)
   bot.on('contact', async ctx=>{
     const s=getState(ctx.chat.id); if(s.step!=='share_contact' || !s.data?.pendingLead) return;
     const contact=ctx.message.contact; const pending=s.data.pendingLead; const client=await ensureUser(ctx,'CLIENT');
     await prisma.user.update({ where:{ id: client.id }, data:{ phone: contact.phone_number||null }});
+
     const master=await prisma.user.findUnique({ where:{ id: pending.masterId }}); const service=await prisma.service.findUnique({ where:{ id: pending.serviceId }});
     const lead=await prisma.lead.create({ data:{
       status:'NEW', clientTelegramId:String(ctx.from.id), clientUsername:ctx.from.username||null,
@@ -126,22 +133,16 @@ function buildBot(token){
       clientPhone:contact.phone_number||null, city:s.data.city||null, budget:s.data.budget||null, note:s.data.note||null,
       masterId: pending.masterId, serviceId: pending.serviceId
     }, include:{ service:true }});
+
     const LmUser=await prisma.user.findUnique({ where:{ id: master.id }}); const Lm=(LmUser?.uiLocale)||'ru';
-    const hasSub=await hasActiveSubscription(master.id);
-    if(hasSub){
-      const text=TEXTS[Lm].newLeadForMasterFull(service.name, lead.city, lead.budget, lead.clientName, lead.clientUsername, lead.clientPhone);
-      try{ await ctx.telegram.sendMessage(Number(master.telegramId), text);}catch(e){}
-      await prisma.lead.update({ where:{ id: lead.id }, data:{ status:'SENT' }});
-    } else {
-      const text=TEXTS[Lm].newLeadForMasterLimited(service.name);
-      try{ await ctx.telegram.sendMessage(Number(master.telegramId), text);}catch(e){}
-      // lead остаётся NEW (пока у нас всё бесплатно без оплат)
-    }
+    const text=(TEXTS[Lm].newLeadForMasterFull)(service.name, lead.city, lead.budget, lead.clientName, lead.clientUsername, lead.clientPhone);
+    try{ await ctx.telegram.sendMessage(Number(master.telegramId), text);}catch(e){}
     const L=await getLocale(ctx);
     await ctx.reply(L==='nl' ? '✅ Contact is verzonden naar de master. Zij nemen contact met u op.' : '✅ Контакт передан мастеру. Он свяжется с вами.');
     clearState(ctx.chat.id);
   });
 
+  // текстовые шаги
   bot.on('text', async ctx=>{
     const s=getState(ctx.chat.id); const text=(ctx.message.text||'').trim(); const L=await getLocale(ctx);
     if(text==='/skip'){
@@ -187,28 +188,137 @@ function buildBot(token){
     }
   });
 
-  async function showMastersList(ctx,L){
-    const s=getState(ctx.chat.id); const dat=s.data||{};
-    if(!dat.city || !dat.serviceId){ await ctx.reply(t(L,'notEnough')); clearState(ctx.chat.id); return; }
-    const results=await prisma.masterService.findMany({
-      where:{ serviceId: dat.serviceId, master:{ isBanned:false, city:{ contains: dat.city, mode:'insensitive' }, role:'MASTER' }},
-      include:{ master:true, service:true }, take:20
-    });
-    if(!results.length){ await ctx.reply(t(L,'noneFound')); clearState(ctx.chat.id); return; }
-    await ctx.reply(t(L,'listFound', Math.min(10, results.length)));
-    let shown=0;
-    for(const ms of results){
-      if(typeof dat.budget==='number'){ const from=ms.priceFrom ?? 0; const to=ms.priceTo ?? 999999; if(!(dat.budget>=from && dat.budget<=to)) continue; }
-      const price=(ms.priceFrom||ms.priceTo)?`${ms.priceFrom||'?'}–${ms.priceTo||'?'}€`:'по запросу';
-      const desc=ms.description ? (ms.description.length>200?ms.description.slice(0,200)+'…':ms.description) : '—';
-      const card=[`👤 ${fmtUser(ms.master)}`, `💇 ${ms.service.name}`, `📍 ${ms.master.city||'—'}`, `💰 ${price}`, `📝 ${desc}`].join('\n');
-      await ctx.reply(card, Markup.inlineKeyboard([[Markup.button.callback(L==='nl'?'Verstuur aanvraag':'Отправить заявку', `lead_${ms.serviceId}_to_${ms.masterId}`)]]));
-      if(++shown>=10) break;
+  // Поиск мастеров с сохранением списка и пагинацией
+  async function showMastersList(ctx, L) {
+    const s = getState(ctx.chat.id);
+    const dat = s.data || {};
+    if (!dat.city || !dat.serviceId) {
+      await ctx.reply(t(L,'notEnough')); clearState(ctx.chat.id); return;
     }
-    setState(ctx.chat.id,{ step:'await_lead', data: dat });
+    const results = await prisma.masterService.findMany({
+      where: {
+        serviceId: dat.serviceId,
+        master: { isBanned: false, city: { contains: dat.city, mode: 'insensitive' }, role: 'MASTER' }
+      },
+      include: { master: true, service: true },
+      orderBy: [{ topUntil: 'desc' }, { rating: 'desc' }, { id: 'desc' }],
+      take: 100
+    });
+    if (!results.length) { await ctx.reply(t(L,'noneFound')); clearState(ctx.chat.id); return; }
+    setState(ctx.chat.id, { data: { ...dat, searchResults: results.map(r => r.id) }, step: 'list_paged' });
+    await renderMastersPage(ctx, L, 0);
   }
 
-  bot.action(/lead_(\\d+)_to_(\\d+)/, async ctx=>{
+  async function renderMastersPage(ctx, L, pageIdx) {
+    const s = getState(ctx.chat.id);
+    const ids = (s.data && s.data.searchResults) || [];
+    const pageSize = 5;
+    const pages = Math.max(1, Math.ceil(ids.length / pageSize));
+    const p = Math.min(Math.max(0, pageIdx), pages - 1);
+    const sliceIds = ids.slice(p * pageSize, p * pageSize + pageSize);
+
+    let pageItems = await prisma.masterService.findMany({
+      where: { id: { in: sliceIds } },
+      include: { master: true, service: true }
+    });
+    // сохранить исходный порядок
+    const order = new Map(sliceIds.map((id, i) => [id, i]));
+    pageItems.sort((a,b)=> (order.get(a.id) - order.get(b.id)));
+
+    const lines = pageItems.map(ms => {
+      const price = (ms.priceFrom || ms.priceTo) ? `${ms.priceFrom || '?'}–${ms.priceTo || '?'}€` : (L==='nl'?'op aanvraag':'по запросу');
+      const topActive = ms.topUntil && new Date(ms.topUntil) > new Date();
+      const topBadge = topActive ? (L==='nl' ? '🔥 TOP' : '🔥 ТОП') : '';
+      const card = [
+        `${topBadge} 👤 ${fmtUser(ms.master)}`.trim(),
+        `⭐ ${stars(ms.rating)}  •  💇 ${ms.service.name}`,
+        `📍 ${ms.master.city || '—'}  •  💰 ${price}`,
+        `📝 ${short(ms.description, 80)}`
+      ].join('\n');
+      return { ms, card };
+    });
+
+    const msgText = [
+      t(L,'listFound', ids.length),
+      '',
+      ...lines.map((x,i) => `#${p*pageSize + i + 1}\n${x.card}`)
+    ].join('\n');
+
+    const navRow = [
+      Markup.button.callback('‹', `pg_prev_${p}`),
+      Markup.button.callback(`${p+1}/${pages}`, `pg_nop_${p}`),
+      Markup.button.callback('›', `pg_next_${p}`)
+    ];
+    const detailRows = lines.map(x => [
+      Markup.button.callback(L==='nl' ? 'Details' : 'Подробнее', `ms_${x.ms.id}`),
+      Markup.button.callback(L==='nl' ? 'Lead sturen' : 'Заявка', `lead_${x.ms.serviceId}_to_${x.ms.masterId}`)
+    ]);
+    const keyboard = Markup.inlineKeyboard([...detailRows, navRow]);
+
+    try { await ctx.editMessageText(msgText, keyboard); }
+    catch { await ctx.reply(msgText, keyboard); }
+
+    setState(ctx.chat.id, { data: { ...(s.data||{}), pageIdx: p } });
+  }
+
+  // Пагинация
+  bot.action(/pg_prev_(\d+)/, async (ctx) => { await ctx.answerCbQuery(); const L = await getLocale(ctx); const from = Number(ctx.match[1]); await renderMastersPage(ctx, L, Math.max(0, from - 1)); });
+  bot.action(/pg_next_(\d+)/, async (ctx) => { await ctx.answerCbQuery(); const L = await getLocale(ctx); const from = Number(ctx.match[1]); await renderMastersPage(ctx, L, from + 1); });
+  bot.action(/pg_nop_(\d+)/, async (ctx) => { await ctx.answerCbQuery(); });
+
+  // Карточка "Подробнее" + фото
+  bot.action(/ms_(\d+)/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const L = await getLocale(ctx);
+    const id = Number(ctx.match[1]);
+    const ms = await prisma.masterService.findUnique({ where: { id }, include: { master: true, service: true }});
+    if (!ms) return;
+
+    const pics = parsePhotos(ms.photos);
+    const price = (ms.priceFrom || ms.priceTo) ? `${ms.priceFrom || '?'}–${ms.priceTo || '?'}€` : (L==='nl'?'op aanvraag':'по запросу');
+    const topActive = ms.topUntil && new Date(ms.topUntil) > new Date();
+    const topBadge = topActive ? (L==='nl' ? '🔥 TOP' : '🔥 ТОП') : '';
+
+    const caption = [
+      `${topBadge} 👤 ${fmtUser(ms.master)}`.trim(),
+      `⭐ ${stars(ms.rating)}  •  💇 ${ms.service.name}`,
+      `📍 ${ms.master.city || '—'}  •  💰 ${price}`,
+      `📝 ${short(ms.description, 300)}`
+    ].join('\n');
+
+    if (pics.length) {
+      try {
+        await ctx.replyWithPhoto(pics[0], {
+          caption,
+          reply_markup: Markup.inlineKeyboard([
+            [Markup.button.callback(L==='nl'?'Lead sturen':'Отправить заявку', `lead_${ms.serviceId}_to_${ms.masterId}`)],
+            pics.length > 1 ? [Markup.button.callback(L==='nl'?'Toon meer foto’s':'Показать ещё фото', `ms_photos_${ms.id}`)] : []
+          ].filter(Boolean)).reply_markup
+        });
+        return;
+      } catch(e) { /* если URL плохой — упадём в текстовый вариант */ }
+    }
+
+    await ctx.reply(
+      caption,
+      Markup.inlineKeyboard([[Markup.button.callback(L==='nl'?'Lead sturen':'Отправить заявку', `lead_${ms.serviceId}_to_${ms.masterId}`)]])
+    );
+  });
+
+  // Доп.фото (до 5)
+  bot.action(/ms_photos_(\d+)/, async (ctx) => {
+    await ctx.answerCbQuery();
+    const id = Number(ctx.match[1]);
+    const ms = await prisma.masterService.findUnique({ where: { id }});
+    const pics = parsePhotos(ms?.photos).slice(0, 5);
+    if (!pics.length) return;
+    for (const url of pics) {
+      try { await ctx.replyWithPhoto(url); } catch(e) {}
+    }
+  });
+
+  // Кнопка "Заявка" уже обрабатывается ниже
+  bot.action(/lead_(\d+)_to_(\d+)/, async ctx=>{
     await ctx.answerCbQuery();
     const serviceId=Number(ctx.match[1]); const masterId=Number(ctx.match[2]);
     const dat=getState(ctx.chat.id).data||{};
@@ -219,6 +329,7 @@ function buildBot(token){
     );
   });
 
+  // Статистика мастера
   bot.command('mystats', async ctx=>{
     const dbUser=await prisma.user.findUnique({ where:{ telegramId: String(ctx.from.id) }});
     if(!dbUser || dbUser.role!=='MASTER'){ await ctx.reply('Доступно только мастерам. /register'); return; }

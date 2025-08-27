@@ -1,10 +1,6 @@
-generator client {
-  provider = "prisma-client-js"
-}
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
 model User {
   id            Int             @id @default(autoincrement())
   telegramId    String          @unique
@@ -22,12 +18,14 @@ model User {
   leads         Lead[]          @relation("MasterLeads")
   subscriptions Subscription[]
 }
+
 model Service {
-  id        Int              @id @default(autoincrement())
-  name      String           @unique
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
   masters   MasterService[]
-  createdAt DateTime         @default(now())
+  createdAt DateTime @default(now())
 }
+
 model MasterService {
   id          Int      @id @default(autoincrement())
   masterId    Int
@@ -35,11 +33,17 @@ model MasterService {
   priceFrom   Int?
   priceTo     Int?
   description String?
-  photos      String?
+  photos      String?   // URL через запятую
+  rating      Int?      // 1..5 ⭐
+  topUntil    DateTime? // показывать в ТОП до этой даты
+  topNote     String?   // примечание (например, "оплачено на карту")
+
   master  User    @relation(fields: [masterId], references: [id])
   service Service @relation(fields: [serviceId], references: [id])
+
   @@unique([masterId, serviceId])
 }
+
 model Lead {
   id               Int        @id @default(autoincrement())
   status           LeadStatus @default(NEW)
@@ -53,9 +57,11 @@ model Lead {
   masterId         Int
   serviceId        Int
   createdAt        DateTime   @default(now())
+
   master  User    @relation(name: "MasterLeads", fields: [masterId], references: [id])
   service Service @relation(fields: [serviceId], references: [id])
 }
+
 model Subscription {
   id         Int      @id @default(autoincrement())
   masterId   Int
@@ -66,15 +72,6 @@ model Subscription {
   master     User     @relation(fields: [masterId], references: [id])
   @@index([masterId])
 }
-enum Role {
-  CLIENT
-  MASTER
-  ADMIN
-}
-enum LeadStatus {
-  NEW
-  SENT
-  CONTACTED
-  WON
-  LOST
-}
+
+enum Role { CLIENT MASTER ADMIN }
+enum LeadStatus { NEW SENT CONTACTED WON LOST }
