@@ -77,7 +77,7 @@ model Subscription {
   createdAt  DateTime @default(now())
   master     User     @relation(fields: [masterId], references: [id])
 
-  @@index([masterId])
+  @@index([masterId])  // <-- ВНУТРИ модели, до закрывающей скобки
 }
 
 enum Role {
@@ -93,8 +93,3 @@ enum LeadStatus {
   WON
   LOST
 }
-  @@index([masterId])
-}
-
-enum Role { CLIENT MASTER ADMIN }
-enum LeadStatus { NEW SENT CONTACTED WON LOST }
