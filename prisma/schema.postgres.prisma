@@ -29,6 +29,7 @@ model Service {
   id        Int      @id @default(autoincrement())
   name      String   @unique
   masters   MasterService[]
+  leads     Lead[]
   createdAt DateTime @default(now())
 }
 
