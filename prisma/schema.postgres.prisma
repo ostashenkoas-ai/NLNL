@@ -1,5 +1,11 @@
-generator client { provider = "prisma-client-js" }
-datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
 
 model User {
   id            Int             @id @default(autoincrement())
@@ -70,6 +76,23 @@ model Subscription {
   periodEnd  DateTime
   createdAt  DateTime @default(now())
   master     User     @relation(fields: [masterId], references: [id])
+
+  @@index([masterId])
+}
+
+enum Role {
+  CLIENT
+  MASTER
+  ADMIN
+}
+
+enum LeadStatus {
+  NEW
+  SENT
+  CONTACTED
+  WON
+  LOST
+}
   @@index([masterId])
 }
 
