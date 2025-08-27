@@ -4,25 +4,27 @@
   "description": "Beauty marketplace Telegram app (RU/NL) with AdminJS, Telegraf, Prisma+Postgres. Heroku-ready (web+worker+release).",
   "type": "commonjs",
   "main": "src/index.js",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node src/index.js",
     "bot": "node src/bot-run.js",
-    "db:push:pg": "prisma db push --schema prisma/schema.postgres.prisma",
+    "db:push:pg": "prisma db push --schema=prisma/schema.postgres.prisma",
     "seed": "node scripts/seed.js",
     "postinstall": "prisma generate --schema=prisma/schema.postgres.prisma"
   },
-"dependencies": {
-  "@adminjs/express": "^6.0.0",
-  "@adminjs/prisma": "^5.0.1",
-  "@prisma/client": "^5.18.0",
-  "adminjs": "^7.0.0",
-  "body-parser": "^1.20.2",
-  "cors": "^2.8.5",
-  "dotenv": "^16.4.5",
-  "express": "^4.19.2",
-  "morgan": "^1.10.0",
-  "telegraf": "^4.16.3",
-  "prisma": "^5.18.0"
+  "dependencies": {
+    "@adminjs/express": "^6.0.0",
+    "@adminjs/prisma": "^5.0.1",
+    "@prisma/client": "^5.18.0",
+    "adminjs": "^7.0.0",
+    "body-parser": "^1.20.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "morgan": "^1.10.0",
+    "telegraf": "^4.16.3",
+    "prisma": "^5.18.0"
+  }
 }
-
